@@ -35,27 +35,3 @@ parameters:
 			identifier: missingType.iterableValue
 			count: 1
 			path: tests/SentryTargetTest.php
-
-		-
-			message: '#^Access to an undefined property BaseApplication\:\:\$user\.$#'
-			identifier: property.notFound
-			count: 2
-			path: tests/commands/SentryController.php
-
-		-
-			message: '#^Class yii2\\extensions\\sentry\\tests\\commands\\SentryController extends generic class yii\\console\\Controller but does not specify its types\: T$#'
-			identifier: missingType.generics
-			count: 1
-			path: tests/commands/SentryController.php
-
-		-
-			message: '#^Method Sentry\\State\\Scope\:\:setUser\(\) invoked with 2 parameters, 1 required\.$#'
-			identifier: arguments.count
-			count: 1
-			path: tests/commands/SentryController.php
-
-		-
-			message: '#^Method yii2\\extensions\\sentry\\tests\\commands\\SentryController\:\:logsProvider\(\) return type has no value type specified in iterable type array\.$#'
-			identifier: missingType.iterableValue
-			count: 1
-			path: tests/commands/SentryController.php
