@@ -1,5 +1,7 @@
 <?php
 
+// phpcs:disable PSR12.Files.FileHeader.SpacingAfterTagBlock
+// phpcs:disable PSR1.Files.SideEffects.FoundWithSymbols
 // ensure we get report on all possible php errors
 error_reporting(-1);
 

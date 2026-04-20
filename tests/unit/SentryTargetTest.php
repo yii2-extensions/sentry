@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 namespace yii2\extensions\sentry\tests\unit;
 
+use Codeception\Test\Unit;
+use Generator;
+use ReflectionClass;
+use ReflectionProperty;
+use RuntimeException;
+use Sentry\Client;
+use Sentry\ClientInterface;
 use Sentry\Event;
 use Sentry\EventHint;
 use Sentry\EventId;
-use yii\log\Logger;
-use ReflectionClass;
-use RuntimeException;
 use Sentry\SentrySdk;
 use Sentry\State\Scope;
-use Codeception\Test\Unit;
-use Sentry\ClientInterface;
+use yii\log\Logger;
 use yii2\extensions\sentry\SentryTarget;
 
 /**
@@ -22,7 +25,7 @@ use yii2\extensions\sentry\SentryTarget;
 class SentryTargetTest extends Unit
 {
     /** @var array test messages */
-    protected $messages = [
+    protected array $messages = [
         ['test', Logger::LEVEL_INFO, 'test', 1481513561.197593, []],
         ['test 2', Logger::LEVEL_INFO, 'test 2', 1481513572.867054, []]
     ];
@@ -32,11 +35,10 @@ class SentryTargetTest extends Unit
      * - returns empty string ''
      * @see SentryTarget::getContextMessage
      */
-    public function testGetContextMessage()
+    public function testGetContextMessage(): void
     {
-        $class = new ReflectionClass(SentryTarget::className());
+        $class = new ReflectionClass(SentryTarget::class);
         $method = $class->getMethod('getContextMessage');
-        $method->setAccessible(true);
 
         $sentryTarget = new SentryTarget();
         $result = $method->invokeArgs($sentryTarget, []);
@@ -44,7 +46,7 @@ class SentryTargetTest extends Unit
         $this->assertEmpty($result);
     }
 
-    public function testExceptionPassing()
+    public function testExceptionPassing(): void
     {
         $sentryTarget = $this->getConfiguredSentryTarget();
 
@@ -73,7 +75,7 @@ class SentryTargetTest extends Unit
         $this->assertTrue($messageWasSent);
     }
 
-    public function messageDataProvider()
+    public function messageDataProvider(): Generator
     {
         $msg = 'A message';
 
@@ -89,7 +91,7 @@ class SentryTargetTest extends Unit
     /**
      * @dataProvider messageDataProvider
      */
-    public function testMessageConverting($expectedMessageText, $loggedMessage)
+    public function testMessageConverting($expectedMessageText, $loggedMessage): void
     {
         $sentryTarget = $this->getConfiguredSentryTarget();
         $messageWasSent = false;
@@ -115,7 +117,7 @@ class SentryTargetTest extends Unit
      * - returns level name for each logger level
      * @see SentryTarget::getLevelName
      */
-    public function testGetLevelName()
+    public function testGetLevelName(): void
     {
         //valid level names
         $levelNames = [
@@ -125,7 +127,7 @@ class SentryTargetTest extends Unit
             'debug',
         ];
 
-        $loggerClass = new ReflectionClass(Logger::className());
+        $loggerClass = new ReflectionClass(Logger::class);
         $loggerLevelConstants = $loggerClass->getConstants();
         foreach ($loggerLevelConstants as $constant => $value) {
             if (strpos($constant, 'LEVEL_') === 0) {
@@ -146,7 +148,7 @@ class SentryTargetTest extends Unit
      * - creates Sentry object
      * @see SentryTarget::collect
      */
-    public function testCollect()
+    public function testCollect(): void
     {
         $sentryTarget = $this->getConfiguredSentryTarget();
 
@@ -161,7 +163,7 @@ class SentryTargetTest extends Unit
      * - Sentry::capture is called on export()
      * @see SentryTarget::export
      */
-    public function testExport()
+    public function testExport(): void
     {
         $sentryTarget = $this->getConfiguredSentryTarget();
 
@@ -181,11 +183,12 @@ class SentryTargetTest extends Unit
      * @return SentryTarget
      * @throws \yii\base\InvalidConfigException
      */
-    protected function getConfiguredSentryTarget()
+    protected function getConfiguredSentryTarget(): SentryTarget
     {
         $sentryTarget = new SentryTarget();
         $sentryTarget->exportInterval = 100;
         $sentryTarget->setLevels(Logger::LEVEL_INFO);
+
         return $sentryTarget;
     }
 
@@ -193,15 +196,11 @@ class SentryTargetTest extends Unit
      * Returns reflected 'client' property
      *
      * @param SentryTarget $sentryTarget
-     * @return \ReflectionProperty
+     * @return ReflectionProperty
      */
-    protected function getAccessibleClientProperty(SentryTarget $sentryTarget)
+    protected function getAccessibleClientProperty(SentryTarget $sentryTarget): ReflectionProperty
     {
-        $sentryTargetClass = new ReflectionClass("\Sentry\Client");
-        $clientProperty = $sentryTargetClass->getProperty('transport');
-        $clientProperty->setAccessible(true);
-
-        return $clientProperty;
+        return new ReflectionClass(Client::class)->getProperty('transport');
     }
 
     /**

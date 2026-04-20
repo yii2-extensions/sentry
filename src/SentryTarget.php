@@ -88,7 +88,7 @@ class SentryTarget extends Target
     /**
      * @inheritdoc
      */
-    public function export()
+    public function export(): void
     {
         foreach ($this->messages as $message) {
             [$text, $level, $category] = $message;
@@ -111,7 +111,8 @@ class SentryTarget extends Target
                 if ($user && ($identity = $user->getIdentity(false))) {
                     $data['userData']['id'] = $identity->getId();
                 }
-            } catch (Throwable $e) {}
+            } catch (Throwable $e) {
+            }
 
             \Sentry\withScope(function (Scope $scope) use ($text, $level, $data) {
                 if (is_array($text)) {
@@ -178,7 +179,7 @@ class SentryTarget extends Target
      *
      * @return array
      */
-    public function runExtraCallback($text, $data)
+    public function runExtraCallback(mixed $text, array $data): array
     {
         if (is_callable($this->extraCallback)) {
             $data['extra'] = call_user_func($this->extraCallback, $text, $data['extra'] ?? []);
@@ -190,13 +191,13 @@ class SentryTarget extends Target
     /**
      * Returns the text display of the specified level for the Sentry.
      *
-     * @deprecated Deprecated from 1.5, will remove in 2.0
-     *
      * @param int $level The message level, e.g. [[LEVEL_ERROR]], [[LEVEL_WARNING]].
      *
      * @return string
+     * @deprecated Deprecated from 1.5, will remove in 2.0
+     *
      */
-    public static function getLevelName($level)
+    public static function getLevelName(int $level): string
     {
         static $levels = [
             Logger::LEVEL_ERROR => 'error',
@@ -217,21 +218,13 @@ class SentryTarget extends Target
      *
      * @return Severity
      */
-    protected function getLogLevel($level): Severity
+    protected function getLogLevel(int $level): Severity
     {
-        switch ($level) {
-            case Logger::LEVEL_PROFILE:
-            case Logger::LEVEL_PROFILE_BEGIN:
-            case Logger::LEVEL_PROFILE_END:
-            case Logger::LEVEL_TRACE:
-                return Severity::debug();
-            case Logger::LEVEL_WARNING:
-                return Severity::warning();
-            case Logger::LEVEL_ERROR:
-                return Severity::error();
-            case Logger::LEVEL_INFO:
-            default:
-                return Severity::info();
-        }
+        return match ($level) {
+            Logger::LEVEL_PROFILE, Logger::LEVEL_PROFILE_BEGIN, Logger::LEVEL_PROFILE_END, Logger::LEVEL_TRACE => Severity::debug(),
+            Logger::LEVEL_WARNING => Severity::warning(),
+            Logger::LEVEL_ERROR => Severity::error(),
+            default => Severity::info(),
+        };
     }
 }

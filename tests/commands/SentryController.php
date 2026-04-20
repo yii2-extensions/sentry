@@ -1,7 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace yii2\extensions\sentry\tests\commands;
 
+use Exception;
 use RuntimeException;
 use yii2\extensions\sentry\tests\models\User;
 use Yii;
@@ -13,9 +16,9 @@ class SentryController extends Controller
     /**
      * Send test messages to the Sentry.
      */
-    public function actionFill()
+    public function actionFill(): void
     {
-        /* @var $logger \yii\log\Logger */
+        /* @var Logger $logger */
         $logger = Yii::createObject(Logger::class);
         Yii::setLogger($logger);
         Yii::$app->log->setLogger(Yii::getLogger());
@@ -41,13 +44,13 @@ class SentryController extends Controller
         }
     }
 
-    protected function logsProvider()
+    protected function logsProvider(): array
     {
         return [
             [
                 'level' => Logger::LEVEL_ERROR,
                 'message' => [
-                    'msg' => new RuntimeException('Connection error', 999, new \Exception),
+                    'msg' => new RuntimeException('Connection error', 999, new Exception()),
                     'extra' => 'Hello, World!',
                     'tags' => ['db-name' => 'bulling'],
                 ],
@@ -55,7 +58,7 @@ class SentryController extends Controller
             ],
             [
                 'level' => Logger::LEVEL_ERROR,
-                'message' => new RuntimeException('Oops... This is exception.', 999, new \Exception),
+                'message' => new RuntimeException('Oops... This is exception.', 999, new Exception()),
                 'category' => 'exceptions',
                 'user' => new User([
                     'id' => 47,
