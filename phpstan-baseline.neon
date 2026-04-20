@@ -1,0 +1,115 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Call to function is_callable\(\) with callable\(\)\: mixed will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/SentryTarget.php
+
+		-
+			message: '#^Method yii2\\extensions\\sentry\\SentryTarget\:\:runExtraCallback\(\) has parameter \$data with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/SentryTarget.php
+
+		-
+			message: '#^Method yii2\\extensions\\sentry\\SentryTarget\:\:runExtraCallback\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/SentryTarget.php
+
+		-
+			message: '#^PHPDoc tag @var for variable \$user contains generic class yii\\web\\User but does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/SentryTarget.php
+
+		-
+			message: '#^Property yii2\\extensions\\sentry\\SentryTarget\:\:\$clientOptions type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/SentryTarget.php
+
+		-
+			message: '#^Access to an undefined property BaseApplication\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 2
+			path: tests/commands/SentryController.php
+
+		-
+			message: '#^Class yii2\\extensions\\sentry\\tests\\commands\\SentryController extends generic class yii\\console\\Controller but does not specify its types\: T$#'
+			identifier: missingType.generics
+			count: 1
+			path: tests/commands/SentryController.php
+
+		-
+			message: '#^Method Sentry\\State\\Scope\:\:setUser\(\) invoked with 2 parameters, 1 required\.$#'
+			identifier: arguments.count
+			count: 1
+			path: tests/commands/SentryController.php
+
+		-
+			message: '#^Method yii2\\extensions\\sentry\\tests\\commands\\SentryController\:\:logsProvider\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/commands/SentryController.php
+
+		-
+			message: '#^Anonymous function never returns null so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 2
+			path: tests/unit/SentryTargetTest.php
+
+		-
+			message: '#^Call to an undefined method yii2\\extensions\\sentry\\tests\\unit\\SentryTargetTest\:\:getMock\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: tests/unit/SentryTargetTest.php
+
+		-
+			message: '#^Call to function method_exists\(\) with \$this\(yii2\\extensions\\sentry\\tests\\unit\\SentryTargetTest\) and ''createMock'' will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: tests/unit/SentryTargetTest.php
+
+		-
+			message: '#^Method yii2\\extensions\\sentry\\tests\\unit\\SentryTargetTest\:\:getMockCompatible\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: tests/unit/SentryTargetTest.php
+
+		-
+			message: '#^Method yii2\\extensions\\sentry\\tests\\unit\\SentryTargetTest\:\:testMessageConverting\(\) has parameter \$expectedMessageText with no type specified\.$#'
+			identifier: missingType.parameter
+			count: 1
+			path: tests/unit/SentryTargetTest.php
+
+		-
+			message: '#^Method yii2\\extensions\\sentry\\tests\\unit\\SentryTargetTest\:\:testMessageConverting\(\) has parameter \$loggedMessage with no type specified\.$#'
+			identifier: missingType.parameter
+			count: 1
+			path: tests/unit/SentryTargetTest.php
+
+		-
+			message: '#^Parameter \#1 \$level of static method yii2\\extensions\\sentry\\SentryTarget\:\:getLevelName\(\) expects int, string given\.$#'
+			identifier: argument.type
+			count: 2
+			path: tests/unit/SentryTargetTest.php
+
+		-
+			message: '#^Parameter \#1 \$type of method PHPUnit\\Framework\\TestCase\:\:createMock\(\) expects class\-string\<mixed\>, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: tests/unit/SentryTargetTest.php
+
+		-
+			message: '#^Property yii2\\extensions\\sentry\\tests\\unit\\SentryTargetTest\:\:\$messages type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/unit/SentryTargetTest.php
+
+		-
+			message: '#^Unable to resolve the template type T in call to method PHPUnit\\Framework\\TestCase\:\:createMock\(\)$#'
+			identifier: argument.templateType
+			count: 1
+			path: tests/unit/SentryTargetTest.php

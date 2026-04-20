@@ -1,2 +1,12 @@
 # Autodetect text files
 * text=auto eol=lf
+
+# Ignore all test and documentation for archive
+/Makefile           export-ignore
+/tests              export-ignore
+/docs               export-ignore
+/support            export-ignore
+.*                  export-ignore
+*.dist              export-ignore
+*.neon              export-ignore
+*.yml               export-ignore

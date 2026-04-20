@@ -1,5 +1,6 @@
 ---
-name: linter
+
+name: static analysis
 
 permissions:
   contents: read
@@ -22,5 +23,5 @@ on:
   push: *ignore-paths
 
 jobs:
-  phpcs:
-    uses: yiisoft/yii2-actions/.github/workflows/linter.yml@master
+  phpstan:
+    uses: yii2-framework/actions/.github/workflows/phpstan.yml@v1

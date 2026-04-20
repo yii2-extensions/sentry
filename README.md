@@ -10,6 +10,13 @@
 </p>
 <!-- markdownlint-enable MD041 -->
 
+<p align="center">
+    <a href="https://github.com/yii2-extensions/sentry/actions/workflows/static.yml" target="_blank">
+        <img src="https://img.shields.io/github/actions/workflow/status/yii2-extensions/sentry/static.yml?style=for-the-badge&logo=github&label=PHPStan" alt="PHPStan">
+    </a>
+</p>
+
+
 
 > [!NOTE]
 > Continued development of https://github.com/notamedia/yii2-sentry
