@@ -14,7 +14,6 @@ use Sentry\Event;
 use Sentry\EventHint;
 use Sentry\EventId;
 use Sentry\SentrySdk;
-use Sentry\State\Scope;
 use yii\log\Logger;
 use yii2\extensions\sentry\SentryTarget;
 
@@ -51,7 +50,7 @@ class SentryTargetTest extends TestCase
         $client = $this->createMock(ClientInterface::class);
         $client->expects($this->once())
             ->method('captureEvent')
-            ->willReturnCallback(function (Event $event, ?EventHint $hint = null, ?Scope $scope = null) use ($logData, &$messageWasSent): EventId {
+            ->willReturnCallback(function (Event $event, ?EventHint $hint = null) use ($logData, &$messageWasSent): EventId {
                 $messageWasSent = true;
                 $this->assertSame($logData['exception'], $hint?->exception);
                 $this->assertSame($logData['message'], $event->getMessage());
@@ -87,7 +86,7 @@ class SentryTargetTest extends TestCase
         $client = $this->createMock(ClientInterface::class);
         $client->expects($this->once())
                ->method('captureEvent')
-               ->willReturnCallback(function (Event $event, ?EventHint $hint = null, ?Scope $scope = null) use ($expectedMessageText, &$messageWasSent): EventId {
+               ->willReturnCallback(function (Event $event) use ($expectedMessageText, &$messageWasSent): EventId {
                    $messageWasSent = true;
                    $this->assertSame($expectedMessageText, $event->getMessage());
 
