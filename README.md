@@ -14,10 +14,12 @@
     <a href="https://github.com/yii2-extensions/sentry/actions/workflows/build.yml" target="_blank">
         <img src="https://img.shields.io/github/actions/workflow/status/yii2-extensions/sentry/build.yml?style=for-the-badge&logo=github&label=PHPUnit" alt="PHPUnit">
     </a>
+    <a href="https://codecov.io/github/yii2-extensions/sentry" target="_blank">
+        <img src="https://img.shields.io/codecov/c/github/yii2-extensions/sentry.svg?style=for-the-badge&logo=codecov&logoColor=white&label=Coverage" alt="CodeCoverage">
+    </a>
     <a href="https://github.com/yii2-extensions/sentry/actions/workflows/static.yml" target="_blank">
         <img src="https://img.shields.io/github/actions/workflow/status/yii2-extensions/sentry/static.yml?style=for-the-badge&logo=github&label=PHPStan" alt="PHPStan">
     </a>
-[![Codecov](https://img.shields.io/codecov/c/github/yii2-extensions/sentry.svg?style=for-the-badge&logo=codecov&logoColor=white&label=Coverage)](https://codecov.io/github/yii2-extensions/sentry)
 </p>
 
 > [!NOTE]
