@@ -1,8 +1,0 @@
-class_name: UnitTester
-modules:
-  enabled:
-    - Yii2:
-        configFile: 'tests/unit/config.php'
-        part: init
-    - Asserts
-    - \Helper\Unit
