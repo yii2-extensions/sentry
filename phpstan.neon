@@ -18,5 +18,3 @@ parameters:
   paths:
     - src
     - tests
-  ignoreErrors:
-    - '#Anonymous function has an unused use#'
