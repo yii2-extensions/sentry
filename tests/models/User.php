@@ -12,17 +12,17 @@ class User extends BaseObject implements IdentityInterface
     /**
      * @var int
      */
-    public $id = 1;
+    public int $id = 1;
 
     /**
      * @var string
      */
-    public $username = 'JohnDoe';
+    public string $username = 'JohnDoe';
 
     /**
      * @var string
      */
-    public $email = 'john.doe@example.com';
+    public string $email = 'john.doe@example.com';
 
     /**
      * {@inheritdoc}
@@ -51,7 +51,7 @@ class User extends BaseObject implements IdentityInterface
     /**
      * {@inheritdoc}
      */
-    public function getAuthKey()
+    public function getAuthKey(): ?string
     {
         return '123';
     }
@@ -59,7 +59,7 @@ class User extends BaseObject implements IdentityInterface
     /**
      * {@inheritdoc}
      */
-    public function validateAuthKey($authKey)
+    public function validateAuthKey($authKey): ?bool
     {
         return true;
     }

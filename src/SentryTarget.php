@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace yii2\extensions\sentry;
 
+use Closure;
 use Sentry\ClientBuilder;
 use Sentry\Event;
 use Sentry\EventHint;
@@ -42,9 +43,9 @@ class SentryTarget extends Target
      */
     public bool $context = true;
     /**
-     * @var callable Callback function that can modify extra's array
+     * @var Closure|null Callback function that can modify extra's array
      */
-    public $extraCallback;
+    public ?Closure $extraCallback = null;
 
     /**
      * @inheritDoc
