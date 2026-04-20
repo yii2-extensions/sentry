@@ -139,7 +139,7 @@ return [
 
 Yii2 log levels converts to Sentry levels:
 
-```
+```php
 \yii\log\Logger::LEVEL_ERROR => 'error',
 \yii\log\Logger::LEVEL_WARNING => 'warning',
 \yii\log\Logger::LEVEL_INFO => 'info',

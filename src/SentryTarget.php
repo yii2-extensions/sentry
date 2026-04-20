@@ -198,8 +198,6 @@ class SentryTarget extends Target
      * @param int $level The message level, e.g. [[LEVEL_ERROR]], [[LEVEL_WARNING]].
      *
      * @return string
-     * @deprecated Deprecated from 1.5, will remove in 2.0
-     *
      */
     public static function getLevelName(int $level): string
     {
