@@ -16,7 +16,7 @@ class SentryController extends Controller
     /**
      * Send test messages to the Sentry.
      */
-    public function actionFill()
+    public function actionFill(): void
     {
         /* @var Logger $logger */
         $logger = Yii::createObject(Logger::class);
@@ -50,7 +50,7 @@ class SentryController extends Controller
             [
                 'level' => Logger::LEVEL_ERROR,
                 'message' => [
-                    'msg' => new RuntimeException('Connection error', 999, new Exception),
+                    'msg' => new RuntimeException('Connection error', 999, new Exception()),
                     'extra' => 'Hello, World!',
                     'tags' => ['db-name' => 'bulling'],
                 ],
@@ -58,7 +58,7 @@ class SentryController extends Controller
             ],
             [
                 'level' => Logger::LEVEL_ERROR,
-                'message' => new RuntimeException('Oops... This is exception.', 999, new Exception),
+                'message' => new RuntimeException('Oops... This is exception.', 999, new Exception()),
                 'category' => 'exceptions',
                 'user' => new User([
                     'id' => 47,
