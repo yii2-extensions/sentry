@@ -63,7 +63,7 @@ class SentryTargetTest extends Unit
             ->method('captureEvent')
             ->willReturnCallback(function (Event $event, ?EventHint $hint = null, ?Scope $scope = null) use ($logData, &$messageWasSent): ?EventId {
                 $messageWasSent = true;
-                $this->assertSame($logData['exception'], $hint->exception);
+                $this->assertSame($logData['exception'], $hint?->exception);
                 $this->assertSame($logData['message'], $event->getMessage());
 
                 return EventId::generate();
@@ -75,7 +75,7 @@ class SentryTargetTest extends Unit
         $this->assertTrue($messageWasSent);
     }
 
-    public function messageDataProvider(): Generator
+    public static function messageDataProvider(): Generator
     {
         $msg = 'A message';
 
@@ -130,10 +130,10 @@ class SentryTargetTest extends Unit
         $loggerClass = new ReflectionClass(Logger::class);
         $loggerLevelConstants = $loggerClass->getConstants();
         foreach ($loggerLevelConstants as $constant => $value) {
-            if (strpos($constant, 'LEVEL_') === 0) {
+            if (str_starts_with($constant, 'LEVEL_')) {
                 $level = SentryTarget::getLevelName($value);
                 $this->assertNotEmpty($level);
-                $this->assertTrue(in_array($level, $levelNames), sprintf('Level "%s" is incorrect', $level));
+                $this->assertContains($level, $levelNames, sprintf('Level "%s" is incorrect', $level));
             }
         }
 
@@ -153,7 +153,7 @@ class SentryTargetTest extends Unit
         $sentryTarget = $this->getConfiguredSentryTarget();
 
         $sentryTarget->collect($this->messages, false);
-        $this->assertEquals(count($this->messages), count($sentryTarget->messages));
+        $this->assertSameSize($this->messages, $sentryTarget->messages);
     }
 
     /**
@@ -174,7 +174,7 @@ class SentryTargetTest extends Unit
         //add messages and test simple export() method
         $sentryTarget->collect($this->messages, false);
         $sentryTarget->export();
-        $this->assertEquals(count($this->messages), count($sentryTarget->messages));
+        $this->assertSameSize($this->messages, $sentryTarget->messages);
     }
 
     /**
@@ -207,11 +207,10 @@ class SentryTargetTest extends Unit
      * Compatible version of creating mock method
      *
      * @param string $className
-     * @return \PHPUnit_Framework_MockObject_MockObject
      */
-    protected function getMockCompatible($className)
+    protected function getMockCompatible(string $className)
     {
         return method_exists($this, 'createMock') ?
-            self::createMock($className) : $this->getMock($className);
+            $this->createMock($className) : $this->getMock($className);
     }
 }

@@ -32,7 +32,7 @@ class SentryTarget extends Target
     /**
      * @var string Sentry client key.
      */
-    public $dsn;
+    public string $dsn;
     /**
      * @var array Options of the \Sentry.
      */
@@ -80,7 +80,7 @@ class SentryTarget extends Target
     /**
      * @inheritdoc
      */
-    protected function getContextMessage()
+    protected function getContextMessage(): string
     {
         return '';
     }
@@ -106,9 +106,12 @@ class SentryTarget extends Target
             }
 
             try {
-                /** @var User $user */
-                $user = Yii::$app->has('user', true) ? Yii::$app->get('user', false) : null;
-                if ($user && ($identity = $user->getIdentity(false))) {
+                /** @var ?User $user */
+                $user = Yii::$app->has('user', true)
+                    ? Yii::$app->get('user', false)
+                    : null;
+
+                if (null !== $user && ($identity = $user->getIdentity(false))) {
                     $data['userData']['id'] = $identity->getId();
                 }
             } catch (Throwable $e) {
