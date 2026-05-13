@@ -19,6 +19,7 @@ use Sentry\Tracing\Transaction;
 use Throwable;
 use Yii;
 use yii\base\Application;
+use yii\base\Controller;
 use yii\log\Logger;
 use yii\web\IdentityInterface;
 use yii\web\Request;
@@ -204,6 +205,23 @@ class SentryTargetTracingTest extends TestCase
         $this->assertNull($transactionProp->getValue($target));
     }
 
+    public function testBeforeActionUpdatesTransactionNameToRoute(): void
+    {
+        $target = $this->createTracingTarget();
+
+        Yii::$app->trigger(Application::EVENT_BEFORE_REQUEST);
+
+        $transactionProp = $this->getPrivateProperty($target, 'transaction');
+        $transaction = $transactionProp->getValue($target);
+        $this->assertInstanceOf(Transaction::class, $transaction);
+        $this->assertStringContainsString('cli', $transaction->getName());
+
+        Yii::$app->requestedRoute = 'user/view';
+        Yii::$app->trigger(Controller::EVENT_BEFORE_ACTION);
+
+        $this->assertSame('cli user/view', $transaction->getName());
+    }
+
     public function testConstructorDoesNotRegisterEventHandlerWhenTracingDisabled(): void
     {
         $target = new SentryTarget([
@@ -365,7 +383,7 @@ class SentryTargetTracingTest extends TestCase
         $this->assertSame('cli unknown', $result);
     }
 
-    public function testResolveTransactionNameForWebApp(): void
+    public function testResolveTransactionNameForWebAppWithRoute(): void
     {
         $target = $this->createTracingTarget();
 
@@ -373,6 +391,25 @@ class SentryTargetTracingTest extends TestCase
         $stubRequest->method('getMethod')->willReturn('POST');
         $stubRequest->method('getPathInfo')->willReturn('/api/users');
         $this->replaceRequestWithMock($stubRequest);
+
+        Yii::$app->requestedRoute = 'user/view';
+
+        $method = $this->getPrivateMethod($target, 'resolveTransactionName');
+        $result = $method->invoke($target);
+
+        $this->assertSame('POST user/view', $result);
+    }
+
+    public function testResolveTransactionNameForWebAppFallsBackToPathInfo(): void
+    {
+        $target = $this->createTracingTarget();
+
+        $stubRequest = $this->createStub(Request::class);
+        $stubRequest->method('getMethod')->willReturn('POST');
+        $stubRequest->method('getPathInfo')->willReturn('/api/users');
+        $this->replaceRequestWithMock($stubRequest);
+
+        Yii::$app->requestedRoute = '';
 
         $method = $this->getPrivateMethod($target, 'resolveTransactionName');
         $result = $method->invoke($target);

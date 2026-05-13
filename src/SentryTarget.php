@@ -22,6 +22,7 @@ use Sentry\Tracing\TransactionSource;
 use Throwable;
 use Yii;
 use yii\base\Application;
+use yii\base\Controller;
 use yii\helpers\ArrayHelper;
 use yii\log\Logger;
 use yii\log\Target;
@@ -98,6 +99,12 @@ class SentryTarget extends Target
                 if ($this->transaction !== null) {
                     $this->transaction->finish();
                     $this->transaction = null;
+                }
+            });
+            Yii::$app->on(Controller::EVENT_BEFORE_ACTION, function () {
+                if ($this->transaction !== null) {
+                    $this->transaction->setName($this->resolveTransactionName());
+                    $this->transaction->getMetadata()->setSource(TransactionSource::component());
                 }
             });
         }
@@ -317,7 +324,9 @@ class SentryTarget extends Target
     /**
      * Resolves the transaction name based on the application type.
      *
-     * For web applications, returns the HTTP method and URL.
+     * For web applications, prefers the route name for low-cardinality grouping
+     * (e.g., "GET user/view" instead of "GET /user/123"). Falls back to path info
+     * when the route is not yet resolved.
      * For console applications, returns the CLI command route.
      *
      * @return string The transaction name
@@ -327,7 +336,9 @@ class SentryTarget extends Target
         try {
             $request = Yii::$app->getRequest();
             if ($request instanceof Request) {
-                return $request->getMethod() . ' ' . $request->getPathInfo();
+                $route = Yii::$app->requestedRoute;
+
+                return $request->getMethod() . ' ' . ($route ?: $request->getPathInfo());
             }
 
             return 'cli ' . (Yii::$app->requestedRoute ?: 'unknown');
