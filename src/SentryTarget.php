@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace yii2\extensions\sentry;
 
 use Closure;
+use JsonException;
 use Sentry\ClientBuilder;
 use Sentry\Event;
 use Sentry\EventHint;
@@ -293,7 +294,11 @@ class SentryTarget extends Target
 
         foreach ($messages as $message) {
             [$text, $level, $category, $timestamp] = $message;
-            $hash = md5((string) json_encode($text, JSON_THROW_ON_ERROR));
+            try {
+                $hash = md5((string) json_encode($text, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
+            } catch (JsonException) {
+                $hash = md5((string) $text);
+            }
 
             if ($level === Logger::LEVEL_PROFILE_BEGIN) {
                 $parent = empty($stack) ? $transaction : $stack[count($stack) - 1]['span'];

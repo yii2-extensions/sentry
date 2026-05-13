@@ -278,6 +278,27 @@ class SentryTargetTracingTest extends TestCase
         $this->assertNull($transactionProp->getValue($target));
     }
 
+    public function testProcessTracingMessagesWithNonJsonEncodableText(): void
+    {
+        $target = $this->createTracingTarget();
+
+        $startTransaction = $this->getPrivateMethod($target, 'startTransaction');
+        $startTransaction->invoke($target);
+
+        $timestamp = microtime(true);
+        $textWithInvalidUtf8 = "\xB1\x42";
+        $messages = [
+            [$textWithInvalidUtf8, Logger::LEVEL_PROFILE_BEGIN, 'db', $timestamp, []],
+            [$textWithInvalidUtf8, Logger::LEVEL_PROFILE_END, 'db', $timestamp + 0.1, []],
+        ];
+
+        $processTracing = $this->getPrivateMethod($target, 'processTracingMessages');
+        $processTracing->invoke($target, $messages);
+
+        $transactionProp = $this->getPrivateProperty($target, 'transaction');
+        $this->assertNull($transactionProp->getValue($target));
+    }
+
     public function testProcessTracingMessagesReturnsEarlyWhenTracingDisabled(): void
     {
         $target = new SentryTarget([
