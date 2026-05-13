@@ -29,3 +29,9 @@ parameters:
 			identifier: missingType.iterableValue
 			count: 1
 			path: tests/SentryTargetTest.php
+
+		-
+			message: '#^Static property Yii\:\:\$app \(BaseApplication\) does not accept null\.$#'
+			identifier: assign.propertyType
+			count: 2
+			path: tests/SentryTargetTracingTest.php
