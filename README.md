@@ -26,8 +26,9 @@
 > Continued development of https://github.com/notamedia/yii2-sentry
 
 ## Requirements
+
 - PHP >= 8.4
-- ext-excimer for profiling metrics
+- `ext-excimer` for profiling metrics
 
 ## Installation
 
@@ -83,7 +84,7 @@ Writing messages with extra data:
     'targets' => [
         [
             'class' => '\yii2\extensions\sentry\SentryTarget',
-            'dsn' => 'http://2682ybvhbs347:235vvgy465346@sentry.io/1',
+            'dsn' => 'https://2682ybvhbs347:235vvgy465346@sentry.io/1',
             'levels' => ['error', 'warning'],
             'context' => true, // Write the context information. The default is true.
             'extraCallback' => function ($message, $extra) {
@@ -175,6 +176,9 @@ Yii2 log levels converts to Sentry levels:
 ```
 
 ### Enable profiling
+
+![image](https://docs.sentry.io/mdx-images/profiling-page-aggregate-flamegraph-AVP2BMUE.png)
+
 > [!NOTE]
 > For the profiler to work, the [Excimer](https://pecl.php.net/package/excimer) extension must be installed.
 
