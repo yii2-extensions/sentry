@@ -159,6 +159,49 @@ class SentryTargetTracingTest extends TestCase
 
         $transactionProp = $this->getPrivateProperty($target, 'transaction');
         $this->assertInstanceOf(Transaction::class, $transactionProp->getValue($target));
+
+        Yii::$app->trigger(Application::EVENT_AFTER_REQUEST);
+
+        $this->assertNull($transactionProp->getValue($target));
+    }
+
+    public function testAfterRequestFinishesTransactionWhenNoProfileMessages(): void
+    {
+        $target = $this->createTracingTarget();
+
+        Yii::$app->trigger(Application::EVENT_BEFORE_REQUEST);
+
+        $transactionProp = $this->getPrivateProperty($target, 'transaction');
+        $this->assertInstanceOf(Transaction::class, $transactionProp->getValue($target));
+
+        Yii::$app->trigger(Application::EVENT_AFTER_REQUEST);
+
+        $this->assertNull($transactionProp->getValue($target));
+    }
+
+    public function testAfterRequestIsNoopWhenTransactionAlreadyFinished(): void
+    {
+        $target = $this->createTracingTarget();
+
+        Yii::$app->trigger(Application::EVENT_BEFORE_REQUEST);
+
+        $transactionProp = $this->getPrivateProperty($target, 'transaction');
+        $this->assertInstanceOf(Transaction::class, $transactionProp->getValue($target));
+
+        $timestamp = microtime(true);
+        $messages = [
+            ['db-query', Logger::LEVEL_PROFILE_BEGIN, 'db', $timestamp, []],
+            ['db-query', Logger::LEVEL_PROFILE_END, 'db', $timestamp + 0.1, []],
+        ];
+
+        $processTracing = $this->getPrivateMethod($target, 'processTracingMessages');
+        $processTracing->invoke($target, $messages);
+
+        $this->assertNull($transactionProp->getValue($target));
+
+        Yii::$app->trigger(Application::EVENT_AFTER_REQUEST);
+
+        $this->assertNull($transactionProp->getValue($target));
     }
 
     public function testConstructorDoesNotRegisterEventHandlerWhenTracingDisabled(): void

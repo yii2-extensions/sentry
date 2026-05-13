@@ -94,6 +94,12 @@ class SentryTarget extends Target
             Yii::$app->on(Application::EVENT_BEFORE_REQUEST, function () {
                 $this->startTransaction();
             });
+            Yii::$app->on(Application::EVENT_AFTER_REQUEST, function () {
+                if ($this->transaction !== null) {
+                    $this->transaction->finish();
+                    $this->transaction = null;
+                }
+            });
         }
     }
 
