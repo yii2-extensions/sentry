@@ -19,6 +19,7 @@ use yii2\extensions\sentry\SentryTarget;
 
 class SentryTargetTest extends TestCase
 {
+    /** @var array<int, array<int, mixed>> */
     protected array $messages = [
         ['test', Logger::LEVEL_INFO, 'test', 1481513561.197593, []],
         ['test 2', Logger::LEVEL_INFO, 'test 2', 1481513572.867054, []]
@@ -77,6 +78,9 @@ class SentryTargetTest extends TestCase
         yield [$msg, ['message' => $msg, 'msg' => 'Ignored']];
     }
 
+    /**
+     * @param string|array<array-key, mixed> $loggedMessage
+     */
     #[DataProvider('messageDataProvider')]
     public function testMessageConverting(string $expectedMessageText, string|array $loggedMessage): void
     {

@@ -15,12 +15,16 @@ use Sentry\Integration\IntegrationInterface;
 use Sentry\SentrySdk;
 use Sentry\Severity;
 use Sentry\State\Scope;
+use Sentry\Tracing\TransactionContext;
+use Sentry\Tracing\TransactionSource;
 use Throwable;
 use Yii;
+use yii\base\Application;
 use yii\helpers\ArrayHelper;
 use yii\log\Logger;
 use yii\log\Target;
 use yii\web\Request;
+use yii\web\Response;
 use yii\web\User;
 
 /**
@@ -35,7 +39,7 @@ class SentryTarget extends Target
      */
     public string $dsn;
     /**
-     * @var array Options of the \Sentry.
+     * @var array<string, mixed> Options of the \Sentry.
      */
     public array $clientOptions = [];
     /**
@@ -46,6 +50,13 @@ class SentryTarget extends Target
      * @var Closure|null Callback function that can modify extra's array
      */
     public ?Closure $extraCallback = null;
+    /**
+     * @var bool Enable Sentry Performance and Profiling.
+     * When set to true, `traces_sample_rate` and `profiles_sample_rate` are set to 1
+     * as defaults in client options (can be overridden via `clientOptions`).
+     * A Sentry Transaction is started on `beforeRequest` and finished on `afterRequest`.
+     */
+    public bool $tracing = false;
 
     /**
      * @inheritDoc
@@ -53,6 +64,16 @@ class SentryTarget extends Target
     public function __construct($config = [])
     {
         parent::__construct($config);
+
+        if ($this->tracing) {
+            $this->clientOptions = ArrayHelper::merge(
+                [
+                    'traces_sample_rate' => 1,
+                    'profiles_sample_rate' => 1,
+                ],
+                $this->clientOptions,
+            );
+        }
 
         $userOptions = array_merge(['dsn' => $this->dsn], $this->clientOptions);
         $builder = ClientBuilder::create($userOptions);
@@ -76,6 +97,73 @@ class SentryTarget extends Target
         });
 
         SentrySdk::init()->bindClient($builder->getClient());
+
+        if ($this->tracing) {
+            $this->registerTracingHandlers();
+        }
+    }
+
+    private function registerTracingHandlers(): void
+    {
+        Yii::$app->on(Application::EVENT_BEFORE_REQUEST, function () {
+            $request = Yii::$app->getRequest();
+            $sentryTrace = null;
+            $baggage = null;
+
+            if ($request instanceof Request) {
+                $sentryTrace = $request->getHeaders()->get('sentry-trace');
+                $baggage = $request->getHeaders()->get('baggage');
+            }
+
+            if ($sentryTrace !== null) {
+                $transactionContext = \Sentry\continueTrace($sentryTrace, $baggage ?? '');
+            } else {
+                $transactionContext = new TransactionContext();
+            }
+
+            $transactionContext->setName($this->getTransactionName());
+            $transactionContext->setOp('http.server');
+
+            $transaction = \Sentry\startTransaction($transactionContext);
+
+            SentrySdk::getCurrentHub()->setSpan($transaction);
+        });
+
+        Yii::$app->on(Application::EVENT_AFTER_REQUEST, function () {
+            $transaction = SentrySdk::getCurrentHub()->getTransaction();
+
+            if ($transaction !== null) {
+                $request = Yii::$app->getRequest();
+
+                if ($request instanceof Request) {
+                    $name = Yii::$app->requestedRoute ?: $this->getTransactionName();
+                    $source = Yii::$app->requestedRoute
+                        ? TransactionSource::route()
+                        : TransactionSource::url();
+
+                    $transaction->setName($name);
+                    $transaction->getMetadata()->setSource($source);
+
+                    /** @var Response $response */
+                    $response = Yii::$app->getResponse();
+                    $transaction->setHttpStatus($response->getStatusCode());
+                }
+
+                $transaction->finish();
+                \Sentry\flush();
+            }
+        });
+    }
+
+    private function getTransactionName(): string
+    {
+        $request = Yii::$app->getRequest();
+
+        if ($request instanceof Request) {
+            return $request->getMethod() . ' ' . ($request->getPathInfo() ?: '/');
+        }
+
+        return '<unknown>';
     }
 
     /**
@@ -116,6 +204,7 @@ class SentryTarget extends Target
                     $data['userData']['id'] = $identity->getId();
                 }
             } catch (Throwable $e) {
+                Yii::error($e);
             }
 
             \Sentry\withScope(function (Scope $scope) use ($text, $level, $data) {
@@ -179,9 +268,9 @@ class SentryTarget extends Target
      * Calls the extra callback if it exists
      *
      * @param mixed $text
-     * @param array $data
+     * @param array<string, mixed> $data
      *
-     * @return array
+     * @return array<string, mixed>
      */
     public function runExtraCallback(mixed $text, array $data): array
     {

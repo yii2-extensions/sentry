@@ -25,6 +25,11 @@
 > [!NOTE]
 > Continued development of https://github.com/notamedia/yii2-sentry
 
+## Requirements
+
+- PHP >= 8.4
+- `ext-excimer` for profiling metrics
+
 ## Installation
 
 ```bash
@@ -36,20 +41,20 @@ Add target class in the application config:
 ```php
 return [
     'components' => [
-	    'log' => [
-		    'traceLevel' => YII_DEBUG ? 3 : 0,
-		    'targets' => [
-			    [
-				    'class' => '\yii2\extensions\sentry\SentryTarget',
-				    'dsn' => 'http://2682ybvhbs347:235vvgy465346@sentry.io/1',
-				    'levels' => ['error', 'warning'],
-				    // Write the context information (the default is true):
-				    'context' => true,
-				    // Additional options for `Sentry\init`:
-				    'clientOptions' => ['release' => 'my-project-name@2.3.12']
-			    ],
-		    ],
-	    ],
+        'log' => [
+            'traceLevel' => YII_DEBUG ? 3 : 0,
+            'targets' => [
+                [
+                    'class' => '\yii2\extensions\sentry\SentryTarget',
+                    'dsn' => 'https://2682ybvhbs347:235vvgy465346@sentry.io/1',
+                    'levels' => ['error', 'warning'],
+                    // Write the context information (the default is true):
+                    'context' => true,
+                    // Additional options for `Sentry\init`:
+                    'clientOptions' => ['release' => 'my-project-name@2.3.12']
+                ],
+            ],
+        ],
     ],
 ];
 ```
@@ -79,7 +84,7 @@ Writing messages with extra data:
     'targets' => [
         [
             'class' => '\yii2\extensions\sentry\SentryTarget',
-            'dsn' => 'http://2682ybvhbs347:235vvgy465346@sentry.io/1',
+            'dsn' => 'https://2682ybvhbs347:235vvgy465346@sentry.io/1',
             'levels' => ['error', 'warning'],
             'context' => true, // Write the context information. The default is true.
             'extraCallback' => function ($message, $extra) {
@@ -146,4 +151,40 @@ Yii2 log levels converts to Sentry levels:
 \yii\log\Logger::LEVEL_TRACE => 'debug',
 \yii\log\Logger::LEVEL_PROFILE_BEGIN => 'debug',
 \yii\log\Logger::LEVEL_PROFILE_END => 'debug',
+```
+
+## Performance and profiling
+
+```php
+'targets' => [
+    [
+        'class' => SentryTarget::class,
+        'tracing' => true,
+        'clientOptions' => [
+            'traces_sample_rate' => 1.0
+        ],
+    ],
+], 
+```
+
+### Enable tracing
+
+```php
+'clientOptions' => [
+    'traces_sample_rate' => 1.0,
+],
+```
+
+### Enable profiling
+
+![image](./support/profiling.png)
+
+> [!NOTE]
+> For the profiler to work, the [Excimer](https://pecl.php.net/package/excimer) extension must be installed.
+
+```php
+'clientOptions' => [
+    // Set a sampling rate for profiling - this is relative to traces_sample_rate
+    'profiles_sample_rate' => 1.0,
+],
 ```
