@@ -2,7 +2,7 @@
 
 ## 1.1.0 Under development
 
-- Enh #6: Added ability Performance and Profiling metrics (@s1lver)
+- Enh #6: Added Performance and Profiling metrics support (@s1lver)
 
 ## 1.0.0 (2026-04-20)
 

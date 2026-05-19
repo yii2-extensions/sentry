@@ -39,7 +39,7 @@ class SentryTarget extends Target
      */
     public string $dsn;
     /**
-     * @var array Options of the \Sentry.
+     * @var array<string, mixed> Options of the \Sentry.
      */
     public array $clientOptions = [];
     /**
@@ -268,9 +268,9 @@ class SentryTarget extends Target
      * Calls the extra callback if it exists
      *
      * @param mixed $text
-     * @param array $data
+     * @param array<string, mixed> $data
      *
-     * @return array
+     * @return array<string, mixed>
      */
     public function runExtraCallback(mixed $text, array $data): array
     {

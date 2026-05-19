@@ -553,7 +553,7 @@ class SentryTargetTracingTest extends TestCase
         $this->assertCount(1, $capturedEvents);
     }
 
-    public function testExportWithFalseTagValue(): void
+    public function testExportWithFalsyTagValue(): void
     {
         $capturedEvents = [];
         $target = new SentryTarget([
