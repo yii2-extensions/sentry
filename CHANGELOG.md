@@ -1,6 +1,9 @@
 # ChangeLog
 
-## 1.1.0 Under development
+## 1.1.1 Under development
+
+
+## 1.1.0 (2026-05-19)
 
 - Enh #6: Added Performance and Profiling metrics support (@s1lver)
 

@@ -155,13 +155,16 @@ Yii2 log levels converts to Sentry levels:
 
 ## Performance and profiling
 
+You can send data to Sentry to obtain **Performance** and **Profile** metrics for your application.
+
 ```php
 'targets' => [
     [
         'class' => SentryTarget::class,
         'tracing' => true,
         'clientOptions' => [
-            'traces_sample_rate' => 1.0
+            'traces_sample_rate' => 1.0,
+            'profiles_sample_rate' => 1.0,
         ],
     ],
 ], 
