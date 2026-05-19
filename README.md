@@ -177,7 +177,7 @@ Yii2 log levels converts to Sentry levels:
 
 ### Enable profiling
 
-![image](https://docs.sentry.io/mdx-images/profiling-page-aggregate-flamegraph-AVP2BMUE.png)
+![image](./support/profiling.png)
 
 > [!NOTE]
 > For the profiler to work, the [Excimer](https://pecl.php.net/package/excimer) extension must be installed.

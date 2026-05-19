@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace yii2\extensions\sentry;
 
 use Closure;
-use JsonException;
 use Sentry\ClientBuilder;
 use Sentry\Event;
 use Sentry\EventHint;
@@ -16,18 +15,16 @@ use Sentry\Integration\IntegrationInterface;
 use Sentry\SentrySdk;
 use Sentry\Severity;
 use Sentry\State\Scope;
-use Sentry\Tracing\SpanContext;
-use Sentry\Tracing\Transaction;
 use Sentry\Tracing\TransactionContext;
 use Sentry\Tracing\TransactionSource;
 use Throwable;
 use Yii;
 use yii\base\Application;
-use yii\base\Controller;
 use yii\helpers\ArrayHelper;
 use yii\log\Logger;
 use yii\log\Target;
 use yii\web\Request;
+use yii\web\Response;
 use yii\web\User;
 
 /**
@@ -54,13 +51,12 @@ class SentryTarget extends Target
      */
     public ?Closure $extraCallback = null;
     /**
-     * @var bool Enable tracing support for Yii2 profiling. When enabled, profile messages
-     * are converted to Sentry transactions and spans. Requires `traces_sample_rate` in
-     * `clientOptions`, e.g. `['traces_sample_rate' => 1.0]`.
+     * @var bool Enable Sentry Performance and Profiling.
+     * When set to true, `traces_sample_rate` and `profiles_sample_rate` are set to 1
+     * as defaults in client options (can be overridden via `clientOptions`).
+     * A Sentry Transaction is started on `beforeRequest` and finished on `afterRequest`.
      */
     public bool $tracing = false;
-
-    private ?Transaction $transaction = null;
 
     /**
      * @inheritDoc
@@ -68,6 +64,16 @@ class SentryTarget extends Target
     public function __construct($config = [])
     {
         parent::__construct($config);
+
+        if ($this->tracing) {
+            $this->clientOptions = ArrayHelper::merge(
+                [
+                    'traces_sample_rate' => 1,
+                    'profiles_sample_rate' => 1,
+                ],
+                $this->clientOptions,
+            );
+        }
 
         $userOptions = array_merge(['dsn' => $this->dsn], $this->clientOptions);
         $builder = ClientBuilder::create($userOptions);
@@ -93,42 +99,71 @@ class SentryTarget extends Target
         SentrySdk::init()->bindClient($builder->getClient());
 
         if ($this->tracing) {
-            Yii::$app->on(Application::EVENT_BEFORE_REQUEST, function () {
-                $this->startTransaction();
-            });
-            Yii::$app->on(Application::EVENT_AFTER_REQUEST, function () {
-                if ($this->transaction !== null) {
-                    $this->transaction->finish();
-                    $this->transaction = null;
-                }
-            });
-            Yii::$app->on(Controller::EVENT_BEFORE_ACTION, function () {
-                if ($this->transaction !== null) {
-                    $this->transaction->setName($this->resolveTransactionName());
-                    $this->transaction->getMetadata()->setSource(TransactionSource::component());
-                }
-            });
+            $this->registerTracingHandlers();
         }
     }
 
-    private function startTransaction(): void
+    private function registerTracingHandlers(): void
     {
-        $client = SentrySdk::getCurrentHub()->getClient();
-        if ($client === null || !$client->getOptions()->isTracingEnabled()) {
-            return;
+        Yii::$app->on(Application::EVENT_BEFORE_REQUEST, function () {
+            $request = Yii::$app->getRequest();
+            $sentryTrace = null;
+            $baggage = null;
+
+            if ($request instanceof Request) {
+                $sentryTrace = $request->getHeaders()->get('sentry-trace');
+                $baggage = $request->getHeaders()->get('baggage');
+            }
+
+            if ($sentryTrace !== null && $baggage !== null) {
+                $transactionContext = \Sentry\continueTrace($sentryTrace, $baggage);
+            } else {
+                $transactionContext = new TransactionContext();
+            }
+
+            $transactionContext->setName($this->getTransactionName());
+            $transactionContext->setOp('http.server');
+
+            $transaction = \Sentry\startTransaction($transactionContext);
+
+            SentrySdk::getCurrentHub()->setSpan($transaction);
+        });
+
+        Yii::$app->on(Application::EVENT_AFTER_REQUEST, function () {
+            $transaction = SentrySdk::getCurrentHub()->getTransaction();
+
+            if ($transaction !== null) {
+                $request = Yii::$app->getRequest();
+
+                if ($request instanceof Request) {
+                    $name = Yii::$app->requestedRoute ?: $this->getTransactionName();
+                    $source = Yii::$app->requestedRoute
+                        ? TransactionSource::route()
+                        : TransactionSource::url();
+
+                    $transaction->setName($name);
+                    $transaction->getMetadata()->setSource($source);
+
+                    /** @var Response $response */
+                    $response = Yii::$app->getResponse();
+                    $transaction->setHttpStatus($response->getStatusCode());
+                }
+
+                $transaction->finish();
+                \Sentry\flush();
+            }
+        });
+    }
+
+    private function getTransactionName(): string
+    {
+        $request = Yii::$app->getRequest();
+
+        if ($request instanceof Request) {
+            return $request->getMethod() . ' ' . ($request->getPathInfo() ?: '/');
         }
 
-        $transactionContext = TransactionContext::make()
-            ->setName($this->resolveTransactionName())
-            ->setOp($this->resolveTransactionOp())
-            ->setSource(TransactionSource::url())
-            ->setStartTimestamp(YII_BEGIN_TIME);
-
-        $this->transaction = \Sentry\startTransaction($transactionContext);
-
-        if ($this->transaction->getSampled()) {
-            SentrySdk::getCurrentHub()->setSpan($this->transaction);
-        }
+        return '<unknown>';
     }
 
     /**
@@ -140,43 +175,11 @@ class SentryTarget extends Target
     }
 
     /**
-     * Returns the configured log levels, automatically including profile levels when tracing is enabled.
-     *
-     * @return int The log levels bitmask
-     */
-    public function getLevels(): int
-    {
-        $levels = parent::getLevels();
-
-        if ($this->tracing) {
-            $levels |= Logger::LEVEL_PROFILE;
-        }
-
-        return $levels;
-    }
-
-    /**
      * @inheritdoc
      */
     public function export(): void
     {
-        $profileMessages = [];
-        $regularMessages = [];
-
         foreach ($this->messages as $message) {
-            $level = $message[1];
-            if ($this->tracing && ($level & Logger::LEVEL_PROFILE)) {
-                $profileMessages[] = $message;
-            } else {
-                $regularMessages[] = $message;
-            }
-        }
-
-        if (!empty($profileMessages)) {
-            $this->processTracingMessages($profileMessages);
-        }
-
-        foreach ($regularMessages as $message) {
             [$text, $level, $category] = $message;
 
             $data = [
@@ -258,111 +261,6 @@ class SentryTarget extends Target
                     ])));
                 }
             });
-        }
-    }
-
-    /**
-     * Processes Yii2 profiling messages and converts them to a single Sentry transaction
-     * with child spans for each profile block.
-     *
-     * A single Transaction is created per request, representing the full operation.
-     * Each `beginProfile`/`endProfile` pair becomes a child Span within that Transaction.
-     *
-     * @param array<int, array{0: mixed, 1: int, 2: string, 3: float, 4?: array<int, mixed>}> $messages Profile log messages to process
-     */
-    protected function processTracingMessages(array $messages): void
-    {
-        $client = SentrySdk::getCurrentHub()->getClient();
-        if ($client === null || !$client->getOptions()->isTracingEnabled()) {
-            return;
-        }
-
-        if ($this->transaction === null) {
-            $this->startTransaction();
-        }
-
-        $transaction = $this->transaction;
-
-        if ($transaction === null || !$transaction->getSampled()) {
-            return;
-        }
-
-        $previousSpan = SentrySdk::getCurrentHub()->getSpan();
-        SentrySdk::getCurrentHub()->setSpan($transaction);
-
-        $stack = [];
-
-        foreach ($messages as $message) {
-            [$text, $level, $category, $timestamp] = $message;
-            try {
-                $hash = md5((string) json_encode($text, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
-            } catch (JsonException) {
-                $hash = md5((string) $text);
-            }
-
-            if ($level === Logger::LEVEL_PROFILE_BEGIN) {
-                $parent = empty($stack) ? $transaction : $stack[count($stack) - 1]['span'];
-
-                $context = SpanContext::make()
-                    ->setOp($category)
-                    ->setDescription((string) $text)
-                    ->setStartTimestamp($timestamp);
-
-                $span = $parent->startChild($context);
-                $stack[] = ['hash' => $hash, 'span' => $span];
-            } elseif ($level === Logger::LEVEL_PROFILE_END) {
-                for ($i = count($stack) - 1; $i >= 0; $i--) {
-                    if ($stack[$i]['hash'] === $hash) {
-                        $stack[$i]['span']->finish($timestamp);
-                        array_splice($stack, $i, 1);
-                        break;
-                    }
-                }
-            }
-        }
-
-        $transaction->finish();
-        SentrySdk::getCurrentHub()->setSpan($previousSpan);
-        $this->transaction = null;
-    }
-
-    /**
-     * Resolves the transaction name based on the application type.
-     *
-     * For web applications, prefers the route name for low-cardinality grouping
-     * (e.g., "GET user/view" instead of "GET /user/123"). Falls back to path info
-     * when the route is not yet resolved.
-     * For console applications, returns the CLI command route.
-     *
-     * @return string The transaction name
-     */
-    protected function resolveTransactionName(): string
-    {
-        try {
-            $request = Yii::$app->getRequest();
-            if ($request instanceof Request) {
-                $route = Yii::$app->requestedRoute;
-
-                return $request->getMethod() . ' ' . ($route ?: $request->getPathInfo());
-            }
-
-            return 'cli ' . (Yii::$app->requestedRoute ?: 'unknown');
-        } catch (Throwable) {
-            return 'yii2-request';
-        }
-    }
-
-    /**
-     * Resolves the transaction operation based on the application type.
-     *
-     * @return string The transaction operation identifier
-     */
-    protected function resolveTransactionOp(): string
-    {
-        try {
-            return Yii::$app->getRequest() instanceof Request ? 'http.server' : 'cli.server';
-        } catch (Throwable) {
-            return 'http.server';
         }
     }
 
