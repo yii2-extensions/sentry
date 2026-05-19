@@ -127,6 +127,27 @@ class SentryTargetTracingTest extends TestCase
         $this->assertSame('http.server', $span->getOp());
     }
 
+    public function testBeforeRequestStartsTransactionWithContinueTraceWithoutBaggage(): void
+    {
+        $this->createTracingTarget();
+
+        $headers = new HeaderCollection();
+        $headers->set('sentry-trace', '1234567890abcdef1234567890abcdef-1234567890abcdef-1');
+
+        $stubRequest = $this->createStub(Request::class);
+        $stubRequest->method('getHeaders')->willReturn($headers);
+        $stubRequest->method('getMethod')->willReturn('GET');
+        $stubRequest->method('getPathInfo')->willReturn('/api/test');
+        $this->replaceRequestWithMock($stubRequest);
+
+        Yii::$app->trigger(Application::EVENT_BEFORE_REQUEST);
+
+        $span = SentrySdk::getCurrentHub()->getSpan();
+        $this->assertInstanceOf(Transaction::class, $span);
+        $this->assertSame('GET /api/test', $span->getName());
+        $this->assertSame('http.server', $span->getOp());
+    }
+
     public function testBeforeRequestStartsTransactionWithoutContinueTrace(): void
     {
         $this->createTracingTarget();

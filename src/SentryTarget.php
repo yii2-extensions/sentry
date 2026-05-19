@@ -115,8 +115,8 @@ class SentryTarget extends Target
                 $baggage = $request->getHeaders()->get('baggage');
             }
 
-            if ($sentryTrace !== null && $baggage !== null) {
-                $transactionContext = \Sentry\continueTrace($sentryTrace, $baggage);
+            if ($sentryTrace !== null) {
+                $transactionContext = \Sentry\continueTrace($sentryTrace, $baggage ?? '');
             } else {
                 $transactionContext = new TransactionContext();
             }
