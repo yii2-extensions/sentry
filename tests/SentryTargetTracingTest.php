@@ -6,8 +6,6 @@ namespace yii2\extensions\sentry\tests;
 
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
-use ReflectionMethod;
-use ReflectionProperty;
 use RuntimeException;
 use Sentry\ClientInterface;
 use Sentry\Event;
@@ -16,13 +14,16 @@ use Sentry\EventId;
 use Sentry\SentrySdk;
 use Sentry\Severity;
 use Sentry\Tracing\Transaction;
+use Sentry\Tracing\TransactionContext;
 use Throwable;
 use Yii;
 use yii\base\Application;
-use yii\base\Controller;
+use yii\helpers\ArrayHelper;
 use yii\log\Logger;
+use yii\web\HeaderCollection;
 use yii\web\IdentityInterface;
 use yii\web\Request;
+use yii\web\Response;
 use yii\web\User;
 use yii2\extensions\sentry\SentryTarget;
 
@@ -39,6 +40,9 @@ class SentryTargetTracingTest extends TestCase
             Yii::$app->set('request', $this->originalRequestConfig);
             $this->originalRequestConfig = [];
         }
+
+        Yii::$app->off(Application::EVENT_BEFORE_REQUEST);
+        Yii::$app->off(Application::EVENT_AFTER_REQUEST);
     }
 
     /**
@@ -46,10 +50,13 @@ class SentryTargetTracingTest extends TestCase
      */
     private function createTracingTarget(array $extraConfig = []): SentryTarget
     {
-        $config = array_merge([
+        $config = ArrayHelper::merge([
             'dsn' => 'https://key@sentry.io/1',
             'tracing' => true,
-            'clientOptions' => ['traces_sample_rate' => 1.0],
+            'clientOptions' => [
+                'traces_sample_rate' => 1.0,
+                'before_send_transaction' => static fn(Event $event): ?Event => null,
+            ],
         ], $extraConfig);
 
         $target = new SentryTarget($config);
@@ -58,171 +65,145 @@ class SentryTargetTracingTest extends TestCase
         return $target;
     }
 
-    private function getPrivateMethod(SentryTarget $target, string $name): ReflectionMethod
-    {
-        return new ReflectionClass($target)->getMethod($name);
-    }
-
-    private function getPrivateProperty(SentryTarget $target, string $name): ReflectionProperty
-    {
-        return new ReflectionClass($target)->getProperty($name);
-    }
-
     private function replaceRequestWithMock(Request $mockRequest): void
     {
         $this->originalRequestConfig = ['class' => get_class(Yii::$app->getRequest())];
         Yii::$app->set('request', $mockRequest);
     }
 
-    public function testGetLevelsIncludesProfileWhenTracingEnabled(): void
+    public function testConstructorMergesDefaultSampleRatesWhenTracingEnabled(): void
     {
-        $target = $this->createTracingTarget();
-        $levels = $target->getLevels();
-
-        $this->assertNotSame(0, $levels & Logger::LEVEL_PROFILE);
-    }
-
-    public function testGetLevelsExcludesProfileWhenTracingDisabled(): void
-    {
-        $target = new SentryTarget(['dsn' => 'https://key@sentry.io/1']);
-        $target->exportInterval = 100;
-        $target->setLevels(Logger::LEVEL_ERROR | Logger::LEVEL_WARNING);
-
-        $levels = $target->getLevels();
-
-        $this->assertSame(0, $levels & Logger::LEVEL_PROFILE);
-    }
-
-    public function testStartTransactionCreatesTransaction(): void
-    {
-        $target = $this->createTracingTarget();
-
-        $startTransaction = $this->getPrivateMethod($target, 'startTransaction');
-        $startTransaction->invoke($target);
-
-        $transactionProp = $this->getPrivateProperty($target, 'transaction');
-        $transaction = $transactionProp->getValue($target);
-
-        $this->assertInstanceOf(Transaction::class, $transaction);
-        $this->assertTrue($transaction->getSampled());
-    }
-
-    public function testStartTransactionReturnsEarlyWhenTracingDisabled(): void
-    {
-        $target = new SentryTarget([
+        new SentryTarget([
             'dsn' => 'https://key@sentry.io/1',
             'tracing' => true,
         ]);
-        $target->exportInterval = 100;
 
-        $startTransaction = $this->getPrivateMethod($target, 'startTransaction');
-        $startTransaction->invoke($target);
+        $client = SentrySdk::getCurrentHub()->getClient();
+        $options = $client?->getOptions();
+        $this->assertNotNull($options);
 
-        $transactionProp = $this->getPrivateProperty($target, 'transaction');
-        $this->assertNull($transactionProp->getValue($target));
+        $this->assertSame(1.0, $options->getTracesSampleRate());
+        $this->assertSame(1.0, $options->getProfilesSampleRate());
     }
 
-    public function testStartTransactionDoesNotSetSpanWhenUnsampled(): void
+    public function testConstructorClientOptionsOverrideDefaultSampleRates(): void
     {
-        $target = $this->createTracingTarget(['clientOptions' => ['traces_sample_rate' => 0.0]]);
+        new SentryTarget([
+            'dsn' => 'https://key@sentry.io/1',
+            'tracing' => true,
+            'clientOptions' => [
+                'traces_sample_rate' => 0.5,
+                'profiles_sample_rate' => 0.3,
+            ],
+        ]);
 
-        SentrySdk::getCurrentHub()->setSpan(null);
+        $client = SentrySdk::getCurrentHub()->getClient();
+        $options = $client?->getOptions();
+        $this->assertNotNull($options);
 
-        $startTransaction = $this->getPrivateMethod($target, 'startTransaction');
-        $startTransaction->invoke($target);
-
-        $transactionProp = $this->getPrivateProperty($target, 'transaction');
-        $transaction = $transactionProp->getValue($target);
-
-        $this->assertInstanceOf(Transaction::class, $transaction);
-        $this->assertFalse($transaction->getSampled());
-        $this->assertNull(SentrySdk::getCurrentHub()->getSpan());
+        $this->assertSame(0.5, $options->getTracesSampleRate());
+        $this->assertSame(0.3, $options->getProfilesSampleRate());
     }
 
-    public function testStartTransactionSetsSpanOnHubWhenSampled(): void
+    public function testBeforeRequestStartsTransactionWithContinueTrace(): void
     {
-        $target = $this->createTracingTarget();
+        $this->createTracingTarget();
 
-        SentrySdk::getCurrentHub()->setSpan(null);
+        $headers = new HeaderCollection();
+        $headers->set('sentry-trace', '1234567890abcdef1234567890abcdef-1234567890abcdef-1');
+        $headers->set('baggage', 'sentry-trace_id=1234567890abcdef1234567890abcdef');
 
-        $startTransaction = $this->getPrivateMethod($target, 'startTransaction');
-        $startTransaction->invoke($target);
+        $stubRequest = $this->createStub(Request::class);
+        $stubRequest->method('getHeaders')->willReturn($headers);
+        $stubRequest->method('getMethod')->willReturn('GET');
+        $stubRequest->method('getPathInfo')->willReturn('/api/test');
+        $this->replaceRequestWithMock($stubRequest);
+
+        Yii::$app->trigger(Application::EVENT_BEFORE_REQUEST);
 
         $span = SentrySdk::getCurrentHub()->getSpan();
         $this->assertInstanceOf(Transaction::class, $span);
+        $this->assertSame('GET /api/test', $span->getName());
+        $this->assertSame('http.server', $span->getOp());
     }
 
-    public function testConstructorRegistersEventHandlerWhenTracingEnabled(): void
+    public function testBeforeRequestStartsTransactionWithoutContinueTrace(): void
     {
-        $target = $this->createTracingTarget();
+        $this->createTracingTarget();
 
         Yii::$app->trigger(Application::EVENT_BEFORE_REQUEST);
 
-        $transactionProp = $this->getPrivateProperty($target, 'transaction');
-        $this->assertInstanceOf(Transaction::class, $transactionProp->getValue($target));
-
-        Yii::$app->trigger(Application::EVENT_AFTER_REQUEST);
-
-        $this->assertNull($transactionProp->getValue($target));
+        $span = SentrySdk::getCurrentHub()->getSpan();
+        $this->assertInstanceOf(Transaction::class, $span);
+        $this->assertSame('<unknown>', $span->getName());
+        $this->assertSame('http.server', $span->getOp());
     }
 
-    public function testAfterRequestFinishesTransactionWhenNoProfileMessages(): void
+    public function testAfterRequestFinishesTransactionWithRoute(): void
     {
-        $target = $this->createTracingTarget();
+        $this->createTracingTarget();
+
+        $stubRequest = $this->createStub(Request::class);
+        $stubRequest->method('getHeaders')->willReturn(new HeaderCollection());
+        $stubRequest->method('getMethod')->willReturn('POST');
+        $stubRequest->method('getPathInfo')->willReturn('/api/users');
+        $this->replaceRequestWithMock($stubRequest);
+
+        $stubResponse = $this->createStub(Response::class);
+        $stubResponse->method('getStatusCode')->willReturn(200);
+        Yii::$app->set('response', $stubResponse);
 
         Yii::$app->trigger(Application::EVENT_BEFORE_REQUEST);
 
-        $transactionProp = $this->getPrivateProperty($target, 'transaction');
-        $this->assertInstanceOf(Transaction::class, $transactionProp->getValue($target));
-
-        Yii::$app->trigger(Application::EVENT_AFTER_REQUEST);
-
-        $this->assertNull($transactionProp->getValue($target));
-    }
-
-    public function testAfterRequestIsNoopWhenTransactionAlreadyFinished(): void
-    {
-        $target = $this->createTracingTarget();
-
-        Yii::$app->trigger(Application::EVENT_BEFORE_REQUEST);
-
-        $transactionProp = $this->getPrivateProperty($target, 'transaction');
-        $this->assertInstanceOf(Transaction::class, $transactionProp->getValue($target));
-
-        $timestamp = microtime(true);
-        $messages = [
-            ['db-query', Logger::LEVEL_PROFILE_BEGIN, 'db', $timestamp, []],
-            ['db-query', Logger::LEVEL_PROFILE_END, 'db', $timestamp + 0.1, []],
-        ];
-
-        $processTracing = $this->getPrivateMethod($target, 'processTracingMessages');
-        $processTracing->invoke($target, $messages);
-
-        $this->assertNull($transactionProp->getValue($target));
-
-        Yii::$app->trigger(Application::EVENT_AFTER_REQUEST);
-
-        $this->assertNull($transactionProp->getValue($target));
-    }
-
-    public function testBeforeActionUpdatesTransactionNameToRoute(): void
-    {
-        $target = $this->createTracingTarget();
-
-        Yii::$app->trigger(Application::EVENT_BEFORE_REQUEST);
-
-        $transactionProp = $this->getPrivateProperty($target, 'transaction');
-        $transaction = $transactionProp->getValue($target);
+        $transaction = SentrySdk::getCurrentHub()->getTransaction();
         $this->assertInstanceOf(Transaction::class, $transaction);
-        $this->assertStringContainsString('cli', $transaction->getName());
+        $this->assertNull($transaction->getEndTimestamp());
 
         Yii::$app->requestedRoute = 'user/view';
-        Yii::$app->trigger(Controller::EVENT_BEFORE_ACTION);
+        Yii::$app->trigger(Application::EVENT_AFTER_REQUEST);
 
-        $this->assertSame('cli user/view', $transaction->getName());
+        $this->assertNotNull($transaction->getEndTimestamp());
+        $this->assertSame('user/view', $transaction->getName());
     }
 
-    public function testConstructorDoesNotRegisterEventHandlerWhenTracingDisabled(): void
+    public function testAfterRequestFinishesTransactionWithUrlWhenNoRoute(): void
+    {
+        $this->createTracingTarget();
+
+        $stubRequest = $this->createStub(Request::class);
+        $stubRequest->method('getHeaders')->willReturn(new HeaderCollection());
+        $stubRequest->method('getMethod')->willReturn('GET');
+        $stubRequest->method('getPathInfo')->willReturn('/fallback');
+        $this->replaceRequestWithMock($stubRequest);
+
+        $stubResponse = $this->createStub(Response::class);
+        $stubResponse->method('getStatusCode')->willReturn(404);
+        Yii::$app->set('response', $stubResponse);
+
+        Yii::$app->trigger(Application::EVENT_BEFORE_REQUEST);
+
+        $transaction = SentrySdk::getCurrentHub()->getTransaction();
+        $this->assertInstanceOf(Transaction::class, $transaction);
+
+        Yii::$app->requestedRoute = '';
+        Yii::$app->trigger(Application::EVENT_AFTER_REQUEST);
+
+        $this->assertNotNull($transaction->getEndTimestamp());
+        $this->assertSame('GET /fallback', $transaction->getName());
+    }
+
+    public function testAfterRequestSkipsWhenNoTransaction(): void
+    {
+        $this->createTracingTarget();
+
+        SentrySdk::getCurrentHub()->setSpan(null);
+
+        Yii::$app->trigger(Application::EVENT_AFTER_REQUEST);
+
+        $this->assertNull(SentrySdk::getCurrentHub()->getTransaction());
+    }
+
+    public function testConstructorDoesNotRegisterEventHandlersWhenTracingDisabled(): void
     {
         $target = new SentryTarget([
             'dsn' => 'https://key@sentry.io/1',
@@ -230,268 +211,75 @@ class SentryTargetTracingTest extends TestCase
         ]);
         $target->exportInterval = 100;
 
+        $context = new TransactionContext();
+        $context->setName('manual');
+        $context->setSampled(true);
+        $manualTransaction = \Sentry\startTransaction($context);
+        SentrySdk::getCurrentHub()->setSpan($manualTransaction);
+
         Yii::$app->trigger(Application::EVENT_BEFORE_REQUEST);
 
-        $transactionProp = $this->getPrivateProperty($target, 'transaction');
-        $this->assertNull($transactionProp->getValue($target));
+        $transaction = SentrySdk::getCurrentHub()->getTransaction();
+        $this->assertInstanceOf(Transaction::class, $transaction);
+        $this->assertSame('manual', $transaction->getName());
     }
 
-    public function testProcessTracingMessagesWithSampledTransaction(): void
-    {
-        $target = $this->createTracingTarget();
-
-        $startTransaction = $this->getPrivateMethod($target, 'startTransaction');
-        $startTransaction->invoke($target);
-
-        $timestamp = microtime(true);
-        $messages = [
-            ['db-query', Logger::LEVEL_PROFILE_BEGIN, 'db', $timestamp, []],
-            ['db-query', Logger::LEVEL_PROFILE_END, 'db', $timestamp + 0.1, []],
-        ];
-
-        $processTracing = $this->getPrivateMethod($target, 'processTracingMessages');
-        $processTracing->invoke($target, $messages);
-
-        $transactionProp = $this->getPrivateProperty($target, 'transaction');
-        $this->assertNull($transactionProp->getValue($target));
-    }
-
-    public function testProcessTracingMessagesWithNestedSpans(): void
-    {
-        $target = $this->createTracingTarget();
-
-        $startTransaction = $this->getPrivateMethod($target, 'startTransaction');
-        $startTransaction->invoke($target);
-
-        $timestamp = microtime(true);
-        $messages = [
-            ['parent-op', Logger::LEVEL_PROFILE_BEGIN, 'app', $timestamp, []],
-            ['child-op', Logger::LEVEL_PROFILE_BEGIN, 'db', $timestamp + 0.01, []],
-            ['child-op', Logger::LEVEL_PROFILE_END, 'db', $timestamp + 0.05, []],
-            ['parent-op', Logger::LEVEL_PROFILE_END, 'app', $timestamp + 0.1, []],
-        ];
-
-        $processTracing = $this->getPrivateMethod($target, 'processTracingMessages');
-        $processTracing->invoke($target, $messages);
-
-        $transactionProp = $this->getPrivateProperty($target, 'transaction');
-        $this->assertNull($transactionProp->getValue($target));
-    }
-
-    public function testProcessTracingMessagesWithNonJsonEncodableText(): void
-    {
-        $target = $this->createTracingTarget();
-
-        $startTransaction = $this->getPrivateMethod($target, 'startTransaction');
-        $startTransaction->invoke($target);
-
-        $timestamp = microtime(true);
-        $textWithInvalidUtf8 = "\xB1\x42";
-        $messages = [
-            [$textWithInvalidUtf8, Logger::LEVEL_PROFILE_BEGIN, 'db', $timestamp, []],
-            [$textWithInvalidUtf8, Logger::LEVEL_PROFILE_END, 'db', $timestamp + 0.1, []],
-        ];
-
-        $processTracing = $this->getPrivateMethod($target, 'processTracingMessages');
-        $processTracing->invoke($target, $messages);
-
-        $transactionProp = $this->getPrivateProperty($target, 'transaction');
-        $this->assertNull($transactionProp->getValue($target));
-    }
-
-    public function testProcessTracingMessagesReturnsEarlyWhenTracingDisabled(): void
+    public function testGetTransactionNameForConsoleApp(): void
     {
         $target = new SentryTarget([
             'dsn' => 'https://key@sentry.io/1',
-            'tracing' => true,
+            'tracing' => false,
         ]);
-        $target->exportInterval = 100;
 
-        $timestamp = microtime(true);
-        $messages = [
-            ['db-query', Logger::LEVEL_PROFILE_BEGIN, 'db', $timestamp, []],
-        ];
+        $refClass = new ReflectionClass($target);
+        $method = $refClass->getMethod('getTransactionName');
 
-        $processTracing = $this->getPrivateMethod($target, 'processTracingMessages');
-        $processTracing->invoke($target, $messages);
-
-        $transactionProp = $this->getPrivateProperty($target, 'transaction');
-        $this->assertNull($transactionProp->getValue($target));
-    }
-
-    public function testProcessTracingMessagesReturnsEarlyWhenTransactionNotSampled(): void
-    {
-        $target = $this->createTracingTarget(['clientOptions' => ['traces_sample_rate' => 0.0]]);
-
-        $startTransaction = $this->getPrivateMethod($target, 'startTransaction');
-        $startTransaction->invoke($target);
-
-        $timestamp = microtime(true);
-        $messages = [
-            ['db-query', Logger::LEVEL_PROFILE_BEGIN, 'db', $timestamp, []],
-            ['db-query', Logger::LEVEL_PROFILE_END, 'db', $timestamp + 0.1, []],
-        ];
-
-        $processTracing = $this->getPrivateMethod($target, 'processTracingMessages');
-        $processTracing->invoke($target, $messages);
-
-        $transactionProp = $this->getPrivateProperty($target, 'transaction');
-        $this->assertInstanceOf(Transaction::class, $transactionProp->getValue($target));
-    }
-
-    public function testProcessTracingMessagesStartsTransactionIfNull(): void
-    {
-        $target = $this->createTracingTarget();
-
-        $transactionProp = $this->getPrivateProperty($target, 'transaction');
-        $this->assertNull($transactionProp->getValue($target));
-
-        $timestamp = microtime(true);
-        $messages = [
-            ['db-query', Logger::LEVEL_PROFILE_BEGIN, 'db', $timestamp, []],
-            ['db-query', Logger::LEVEL_PROFILE_END, 'db', $timestamp + 0.1, []],
-        ];
-
-        $processTracing = $this->getPrivateMethod($target, 'processTracingMessages');
-        $processTracing->invoke($target, $messages);
-
-        $this->assertNull($transactionProp->getValue($target));
-    }
-
-    public function testProcessTracingMessagesRestoresPreviousSpan(): void
-    {
-        $target = $this->createTracingTarget();
-
-        $startTransaction = $this->getPrivateMethod($target, 'startTransaction');
-        $startTransaction->invoke($target);
-
-        $spanBeforeProcess = SentrySdk::getCurrentHub()->getSpan();
-
-        $timestamp = microtime(true);
-        $messages = [
-            ['db-query', Logger::LEVEL_PROFILE_BEGIN, 'db', $timestamp, []],
-            ['db-query', Logger::LEVEL_PROFILE_END, 'db', $timestamp + 0.1, []],
-        ];
-
-        $processTracing = $this->getPrivateMethod($target, 'processTracingMessages');
-        $processTracing->invoke($target, $messages);
-
-        $spanAfterProcess = SentrySdk::getCurrentHub()->getSpan();
-        $this->assertSame($spanBeforeProcess, $spanAfterProcess);
-    }
-
-    public function testResolveTransactionNameForConsoleAppWithRoute(): void
-    {
-        $target = $this->createTracingTarget();
-
-        Yii::$app->requestedRoute = 'test/route';
-
-        $method = $this->getPrivateMethod($target, 'resolveTransactionName');
         $result = $method->invoke($target);
 
-        $this->assertSame('cli test/route', $result);
+        $this->assertSame('<unknown>', $result);
     }
 
-    public function testResolveTransactionNameForConsoleAppWithoutRoute(): void
+    public function testGetTransactionNameForWebApp(): void
     {
-        $target = $this->createTracingTarget();
-
-        Yii::$app->requestedRoute = '';
-
-        $method = $this->getPrivateMethod($target, 'resolveTransactionName');
-        $result = $method->invoke($target);
-
-        $this->assertSame('cli unknown', $result);
-    }
-
-    public function testResolveTransactionNameForWebAppWithRoute(): void
-    {
-        $target = $this->createTracingTarget();
+        $target = new SentryTarget([
+            'dsn' => 'https://key@sentry.io/1',
+            'tracing' => false,
+        ]);
 
         $stubRequest = $this->createStub(Request::class);
         $stubRequest->method('getMethod')->willReturn('POST');
         $stubRequest->method('getPathInfo')->willReturn('/api/users');
         $this->replaceRequestWithMock($stubRequest);
 
-        Yii::$app->requestedRoute = 'user/view';
+        $refClass = new ReflectionClass($target);
+        $method = $refClass->getMethod('getTransactionName');
 
-        $method = $this->getPrivateMethod($target, 'resolveTransactionName');
-        $result = $method->invoke($target);
-
-        $this->assertSame('POST user/view', $result);
-    }
-
-    public function testResolveTransactionNameForWebAppFallsBackToPathInfo(): void
-    {
-        $target = $this->createTracingTarget();
-
-        $stubRequest = $this->createStub(Request::class);
-        $stubRequest->method('getMethod')->willReturn('POST');
-        $stubRequest->method('getPathInfo')->willReturn('/api/users');
-        $this->replaceRequestWithMock($stubRequest);
-
-        Yii::$app->requestedRoute = '';
-
-        $method = $this->getPrivateMethod($target, 'resolveTransactionName');
         $result = $method->invoke($target);
 
         $this->assertSame('POST /api/users', $result);
     }
 
-    public function testResolveTransactionNameHandlesException(): void
+    public function testGetTransactionNameForWebAppWithEmptyPathInfo(): void
     {
-        $target = $this->createTracingTarget();
-
-        $originalApp = Yii::$app;
-        Yii::$app = null;
-
-        $method = $this->getPrivateMethod($target, 'resolveTransactionName');
-        $result = $method->invoke($target);
-
-        $this->assertSame('yii2-request', $result);
-
-        Yii::$app = $originalApp;
-    }
-
-    public function testResolveTransactionOpForConsoleApp(): void
-    {
-        $target = $this->createTracingTarget();
-
-        $method = $this->getPrivateMethod($target, 'resolveTransactionOp');
-        $result = $method->invoke($target);
-
-        $this->assertSame('cli.server', $result);
-    }
-
-    public function testResolveTransactionOpForWebApp(): void
-    {
-        $target = $this->createTracingTarget();
+        $target = new SentryTarget([
+            'dsn' => 'https://key@sentry.io/1',
+            'tracing' => false,
+        ]);
 
         $stubRequest = $this->createStub(Request::class);
+        $stubRequest->method('getMethod')->willReturn('GET');
+        $stubRequest->method('getPathInfo')->willReturn('');
         $this->replaceRequestWithMock($stubRequest);
 
-        $method = $this->getPrivateMethod($target, 'resolveTransactionOp');
+        $refClass = new ReflectionClass($target);
+        $method = $refClass->getMethod('getTransactionName');
+
         $result = $method->invoke($target);
 
-        $this->assertSame('http.server', $result);
+        $this->assertSame('GET /', $result);
     }
 
-    public function testResolveTransactionOpHandlesException(): void
-    {
-        $target = $this->createTracingTarget();
-
-        $originalApp = Yii::$app;
-        Yii::$app = null;
-
-        $method = $this->getPrivateMethod($target, 'resolveTransactionOp');
-        $result = $method->invoke($target);
-
-        $this->assertSame('http.server', $result);
-
-        Yii::$app = $originalApp;
-    }
-
-    public function testExportWithTracingSeparatesProfileMessages(): void
+    public function testExportWithTracingDoesNotAffectRegularMessages(): void
     {
         $capturedEvents = [];
         $target = new SentryTarget([
@@ -510,54 +298,25 @@ class SentryTargetTracingTest extends TestCase
             ],
         ]);
         $target->exportInterval = 100;
-        $target->setLevels(Logger::LEVEL_ERROR | Logger::LEVEL_PROFILE);
+        $target->setLevels(Logger::LEVEL_ERROR);
 
         $timestamp = microtime(true);
         $messages = [
             ['regular error', Logger::LEVEL_ERROR, 'app', $timestamp, []],
-            ['db-query', Logger::LEVEL_PROFILE_BEGIN, 'db', $timestamp + 0.01, []],
-            ['db-query', Logger::LEVEL_PROFILE_END, 'db', $timestamp + 0.02, []],
         ];
 
         $target->collect($messages, true);
 
-        $this->assertGreaterThanOrEqual(2, count($capturedEvents));
         $regularMessages = array_filter($capturedEvents, static fn(Event $e) => $e->getMessage() === 'regular error');
         $this->assertCount(1, $regularMessages);
-    }
-
-    public function testExportWithTracingDisabledProcessesProfileAsRegular(): void
-    {
-        $capturedEvents = [];
-        $target = new SentryTarget([
-            'dsn' => 'https://key@sentry.io/1',
-            'tracing' => false,
-            'clientOptions' => [
-                'before_send' => function (Event $event) use (&$capturedEvents) {
-                    $capturedEvents[] = $event;
-                    return null;
-                },
-            ],
-        ]);
-        $target->exportInterval = 100;
-        $target->setLevels(Logger::LEVEL_INFO | Logger::LEVEL_PROFILE);
-
-        $timestamp = microtime(true);
-        $messages = [
-            ['info message', Logger::LEVEL_INFO, 'app', $timestamp, []],
-            ['profile message', Logger::LEVEL_PROFILE_BEGIN, 'db', $timestamp + 0.01, []],
-        ];
-
-        $target->collect($messages, true);
-
-        $this->assertCount(2, $capturedEvents);
     }
 
     public function testGetLogLevelForProfileBegin(): void
     {
         $target = new SentryTarget(['dsn' => 'https://key@sentry.io/1']);
 
-        $method = $this->getPrivateMethod($target, 'getLogLevel');
+        $refClass = new ReflectionClass($target);
+        $method = $refClass->getMethod('getLogLevel');
         $result = $method->invoke($target, Logger::LEVEL_PROFILE_BEGIN);
 
         $this->assertEquals(Severity::debug(), $result);
@@ -567,7 +326,8 @@ class SentryTargetTracingTest extends TestCase
     {
         $target = new SentryTarget(['dsn' => 'https://key@sentry.io/1']);
 
-        $method = $this->getPrivateMethod($target, 'getLogLevel');
+        $refClass = new ReflectionClass($target);
+        $method = $refClass->getMethod('getLogLevel');
         $result = $method->invoke($target, Logger::LEVEL_PROFILE_END);
 
         $this->assertEquals(Severity::debug(), $result);
@@ -577,7 +337,8 @@ class SentryTargetTracingTest extends TestCase
     {
         $target = new SentryTarget(['dsn' => 'https://key@sentry.io/1']);
 
-        $method = $this->getPrivateMethod($target, 'getLogLevel');
+        $refClass = new ReflectionClass($target);
+        $method = $refClass->getMethod('getLogLevel');
         $result = $method->invoke($target, Logger::LEVEL_PROFILE);
 
         $this->assertEquals(Severity::debug(), $result);
@@ -587,7 +348,8 @@ class SentryTargetTracingTest extends TestCase
     {
         $target = new SentryTarget(['dsn' => 'https://key@sentry.io/1']);
 
-        $method = $this->getPrivateMethod($target, 'getLogLevel');
+        $refClass = new ReflectionClass($target);
+        $method = $refClass->getMethod('getLogLevel');
         $result = $method->invoke($target, Logger::LEVEL_TRACE);
 
         $this->assertEquals(Severity::debug(), $result);
@@ -679,7 +441,6 @@ class SentryTargetTracingTest extends TestCase
         $user->method('getIdentity')->willReturn($identity);
 
         Yii::$app->set('user', $user);
-        Yii::$app->get('user');
 
         $target->collect([['test message', Logger::LEVEL_INFO, 'app', microtime(true), []]], true);
 
@@ -705,7 +466,6 @@ class SentryTargetTracingTest extends TestCase
         $user->method('getIdentity')->willThrowException(new RuntimeException('identity error'));
 
         Yii::$app->set('user', $user);
-        Yii::$app->get('user');
 
         $target->collect([['test message', Logger::LEVEL_INFO, 'app', microtime(true), []]], true);
 
