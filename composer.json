@@ -3,14 +3,17 @@
     "description": "Yii2 logger for Sentry",
     "keywords": [
         "sentry",
-        "yii2"
+        "yii2",
+        "issues",
+        "performance",
+        "profiling"
     ],
     "type": "yii2-extension",
     "license": "BSD-3-Clause",
     "require": {
         "php": ">=8.4",
         "yiisoft/yii2": "^2.0.54",
-        "sentry/sdk": "^4.0"
+        "sentry/sentry": "^4.0"
     },
     "require-dev": {
         "yiisoft/yii2-coding-standards": "^3.0",

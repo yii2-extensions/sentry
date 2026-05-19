@@ -6,6 +6,7 @@
 ## 1.1.0 (2026-05-19)
 
 - Enh #6: Added Performance and Profiling metrics support (@s1lver)
+- Chg : Replace `sentry/sdk` to `sentry/sentry` (@s1lver)
 
 ## 1.0.0 (2026-04-20)
 

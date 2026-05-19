@@ -462,6 +462,7 @@ class SentryTargetTracingTest extends TestCase
         $user->method('getIdentity')->willReturn($identity);
 
         Yii::$app->set('user', $user);
+        Yii::$app->get('user');
 
         $target->collect([['test message', Logger::LEVEL_INFO, 'app', microtime(true), []]], true);
 
@@ -487,6 +488,7 @@ class SentryTargetTracingTest extends TestCase
         $user->method('getIdentity')->willThrowException(new RuntimeException('identity error'));
 
         Yii::$app->set('user', $user);
+        Yii::$app->get('user');
 
         $target->collect([['test message', Logger::LEVEL_INFO, 'app', microtime(true), []]], true);
 
