@@ -11,14 +11,14 @@
     "type": "yii2-extension",
     "license": "BSD-3-Clause",
     "require": {
-        "php": ">=8.4",
-        "yiisoft/yii2": "^2.0.54",
+        "php": ">=8.5",
+        "yiisoft/yii2": "^2.0.55",
         "sentry/sentry": "^4.0"
     },
     "require-dev": {
         "yiisoft/yii2-coding-standards": "^3.0",
         "phpunit/phpunit": "^13.1.0",
-        "phpstan/phpstan": "^2.1",
+        "phpstan/phpstan": "^2.2",
         "phpstan/phpstan-phpunit": "^2.0"
     },
     "autoload": {

@@ -2,7 +2,7 @@
 services:
 
   php:
-    image: "yiisoftware/yii2-php:${PHP_VERSION:-8.4}-apache"
+    image: "yiisoftware/yii2-php:${PHP_VERSION:-8.5}-apache"
     container_name: sentry-php
     networks:
       - sentry
